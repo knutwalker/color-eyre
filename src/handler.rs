@@ -1,11 +1,15 @@
-use crate::{
-    config::BacktraceFormatter,
-    section::help::HelpInfo,
-    writers::{EnvSection, WriterExt},
-    Handler,
-};
+// #[cfg(feature = "capture-backtrace")]
+// use crate::config::installed_hook;
+#[cfg(feature = "capture-backtrace")]
+use crate::config::BacktraceFormatter;
+#[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
+use crate::writers::EnvSection;
+use crate::{section::help::HelpInfo, writers::WriterExt, Handler};
+#[cfg(feature = "capture-backtrace")]
 use backtrace::Backtrace;
-use indenter::{indented, Format};
+use indenter::indented;
+#[cfg(feature = "capture-backtrace")]
+use indenter::Format;
 use owo_colors::OwoColorize;
 use std::fmt::Write;
 #[cfg(feature = "capture-spantrace")]
@@ -19,6 +23,8 @@ impl std::fmt::Debug for Handler {
 
 impl Handler {
     /// Return a reference to the captured `Backtrace` type
+    #[cfg(feature = "capture-backtrace")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "capture-backtrace")))]
     pub fn backtrace(&self) -> Option<&Backtrace> {
         self.backtrace.as_ref()
     }
@@ -30,6 +36,7 @@ impl Handler {
         self.span_trace.as_ref()
     }
 
+    #[cfg(feature = "capture-backtrace")]
     pub(crate) fn format_backtrace<'a>(
         &'a self,
         trace: &'a backtrace::Backtrace,
@@ -108,14 +115,18 @@ impl eyre::EyreHandler for Handler {
             }
         }
 
-        if let Some(backtrace) = self.backtrace.as_ref() {
-            let fmted_bt = self.format_backtrace(&backtrace);
+        #[cfg(feature = "capture-backtrace")]
+        {
+            if let Some(backtrace) = self.backtrace.as_ref() {
+                let fmted_bt = self.format_backtrace(&backtrace);
 
-            write!(
-                indented(&mut separated.ready()).with_format(Format::Uniform { indentation: "  " }),
-                "{}",
-                fmted_bt
-            )?;
+                write!(
+                    indented(&mut separated.ready())
+                        .with_format(Format::Uniform { indentation: "  " }),
+                    "{}",
+                    fmted_bt
+                )?;
+            }
         }
 
         let f = separated.ready();
@@ -131,8 +142,10 @@ impl eyre::EyreHandler for Handler {
             f = h.ready();
         }
 
+        #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
         if self.display_env_section {
             let env_section = EnvSection {
+                #[cfg(feature = "capture-backtrace")]
                 bt_captured: &self.backtrace.is_some(),
                 #[cfg(feature = "capture-spantrace")]
                 span_trace,
@@ -151,8 +164,10 @@ impl eyre::EyreHandler for Handler {
             }
 
             let issue_section = crate::section::github::IssueSection::new(url, &payload)
-                .with_backtrace(self.backtrace.as_ref())
                 .with_metadata(&**self.issue_metadata);
+
+            #[cfg(feature = "capture-backtrace")]
+            let issue_section = issue_section.with_backtrace(self.backtrace.as_ref());
 
             #[cfg(feature = "capture-spantrace")]
             let issue_section = issue_section.with_span_trace(span_trace);

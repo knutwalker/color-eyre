@@ -360,8 +360,7 @@
 )]
 #![allow(clippy::try_err)]
 
-use std::sync::Arc;
-
+#[cfg(feature = "capture-backtrace")]
 use backtrace::Backtrace;
 pub use eyre;
 #[doc(hidden)]
@@ -372,6 +371,8 @@ use section::help::HelpInfo;
 #[doc(hidden)]
 pub use section::Section as Help;
 pub use section::{IndentedSection, Section, SectionExt};
+#[cfg(feature = "capture-backtrace")]
+use std::sync::Arc;
 #[cfg(feature = "capture-spantrace")]
 use tracing_error::SpanTrace;
 #[doc(hidden)]
@@ -397,11 +398,14 @@ mod writers;
 /// [`color_eyre::Report`]: type.Report.html
 /// [`color_eyre::Result`]: type.Result.html
 pub struct Handler {
+    #[cfg(feature = "capture-backtrace")]
     filters: Arc<[Box<config::FilterCallback>]>,
+    #[cfg(feature = "capture-backtrace")]
     backtrace: Option<Backtrace>,
     #[cfg(feature = "capture-spantrace")]
     span_trace: Option<SpanTrace>,
     sections: Vec<HelpInfo>,
+    #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
     display_env_section: bool,
     #[cfg(feature = "issue-url")]
     issue_url: Option<String>,

@@ -1,15 +1,20 @@
 //! Configuration options for customizing the behavior of the provided panic
 //! and error reporting hooks
-use crate::{
-    section::PanicMessage,
-    writers::{EnvSection, WriterExt},
-};
+#[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
+use crate::writers::EnvSection;
+use crate::{section::PanicMessage, writers::WriterExt};
 use fmt::Display;
+#[cfg(feature = "capture-backtrace")]
 use indenter::{indented, Format};
 use owo_colors::OwoColorize;
+#[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
 use std::env;
+use std::fmt;
 use std::fmt::Write as _;
-use std::{fmt, path::PathBuf, sync::Arc};
+#[cfg(feature = "capture-backtrace")]
+use std::path::PathBuf;
+#[cfg(any(feature = "issue-url", feature = "capture-backtrace"))]
+use std::sync::Arc;
 
 #[derive(Debug)]
 struct InstallError;
@@ -23,6 +28,7 @@ impl fmt::Display for InstallError {
 impl std::error::Error for InstallError {}
 
 /// A representation of a Frame from a Backtrace or a SpanTrace
+#[cfg(feature = "capture-backtrace")]
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Frame {
@@ -36,6 +42,7 @@ pub struct Frame {
     pub filename: Option<PathBuf>,
 }
 
+#[cfg(feature = "capture-backtrace")]
 impl fmt::Display for Frame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let is_dependency_code = self.is_dependency_code();
@@ -96,8 +103,10 @@ impl fmt::Display for Frame {
     }
 }
 
+#[cfg(feature = "capture-backtrace")]
 struct SourceSection<'a>(&'a Frame);
 
+#[cfg(feature = "capture-backtrace")]
 impl fmt::Display for SourceSection<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (lineno, filename) = match (self.0.lineno, self.0.filename.as_ref()) {
@@ -141,6 +150,7 @@ impl fmt::Display for SourceSection<'_> {
     }
 }
 
+#[cfg(feature = "capture-backtrace")]
 impl Frame {
     fn is_dependency_code(&self) -> bool {
         const SYM_PREFIXES: &[&str] = &[
@@ -194,7 +204,9 @@ impl Frame {
     /// Post panic frames are frames of a functions called after the actual panic
     /// is already in progress and don't contain any useful information for a
     /// reader of the backtrace.
+    #[cfg(feature = "capture-backtrace")]
     fn is_post_panic_code(&self) -> bool {
+        #[cfg(feature = "capture-backtrace")]
         const SYM_PREFIXES: &[&str] = &[
             "_rust_begin_unwind",
             "rust_begin_unwind",
@@ -218,7 +230,9 @@ impl Frame {
 
     /// Heuristically determine whether a frame is likely to be part of language
     /// runtime.
+    #[cfg(feature = "capture-backtrace")]
     fn is_runtime_init_code(&self) -> bool {
+        #[cfg(feature = "capture-backtrace")]
         const SYM_PREFIXES: &[&str] = &[
             "std::rt::lang_start::",
             "test::run_test::run_test_inner::",
@@ -245,8 +259,10 @@ impl Frame {
 
 /// Builder for customizing the behavior of the global panic and error report hooks
 pub struct HookBuilder {
+    #[cfg(feature = "capture-backtrace")]
     filters: Vec<Box<FilterCallback>>,
     capture_span_trace_by_default: bool,
+    #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
     display_env_section: bool,
     panic_section: Option<Box<dyn Display + Send + Sync + 'static>>,
     panic_message: Box<dyn PanicMessage>,
@@ -255,7 +271,7 @@ pub struct HookBuilder {
     #[cfg(feature = "issue-url")]
     issue_metadata: Vec<(String, Box<dyn Display + Send + Sync + 'static>)>,
     #[cfg(feature = "issue-url")]
-    issue_filter: Arc<IssueFilterCallback>,
+    issue_filter: std::sync::Arc<IssueFilterCallback>,
 }
 
 impl HookBuilder {
@@ -277,16 +293,21 @@ impl HookBuilder {
     ///     .unwrap();
     /// ```
     pub fn new() -> Self {
-        Self::blank()
-            .add_default_filters()
-            .capture_span_trace_by_default(true)
+        let builder = Self::blank().capture_span_trace_by_default(true);
+
+        #[cfg(feature = "capture-backtrace")]
+        let builder = builder.add_default_filters();
+
+        builder
     }
 
     /// Construct a HookBuilder with minimal features enabled
     pub fn blank() -> Self {
         HookBuilder {
+            #[cfg(feature = "capture-backtrace")]
             filters: vec![],
             capture_span_trace_by_default: false,
+            #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
             display_env_section: true,
             panic_section: None,
             panic_message: Box::new(DefaultPanicMessage),
@@ -464,6 +485,11 @@ impl HookBuilder {
     }
 
     /// Configures the enviroment varible info section and whether or not it is displayed
+    #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
+    #[cfg_attr(
+        docsrs,
+        doc(cfg(any(feature = "capture-backtrace", feature = "capture-spantrace")))
+    )]
     pub fn display_env_section(mut self, cond: bool) -> Self {
         self.display_env_section = cond;
         self
@@ -495,6 +521,8 @@ impl HookBuilder {
     ///     .install()
     ///     .unwrap();
     /// ```
+    #[cfg(feature = "capture-backtrace")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "capture-backtrace")))]
     pub fn add_frame_filter(mut self, filter: Box<FilterCallback>) -> Self {
         self.filters.push(filter);
         self
@@ -509,6 +537,8 @@ impl HookBuilder {
     }
 
     /// Add the default set of filters to this `HookBuilder`'s configuration
+    #[cfg(feature = "capture-backtrace")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "capture-backtrace")))]
     pub fn add_default_filters(self) -> Self {
         self.add_frame_filter(Box::new(default_frame_filter))
             .add_frame_filter(Box::new(eyre_frame_filters))
@@ -520,10 +550,12 @@ impl HookBuilder {
         #[cfg(feature = "issue-url")]
         let metadata = Arc::new(self.issue_metadata);
         let panic_hook = PanicHook {
+            #[cfg(feature = "capture-backtrace")]
             filters: self.filters.into(),
             section: self.panic_section,
             #[cfg(feature = "capture-spantrace")]
             capture_span_trace_by_default: self.capture_span_trace_by_default,
+            #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
             display_env_section: self.display_env_section,
             panic_message: self.panic_message,
             #[cfg(feature = "issue-url")]
@@ -535,9 +567,11 @@ impl HookBuilder {
         };
 
         let eyre_hook = EyreHook {
+            #[cfg(feature = "capture-backtrace")]
             filters: panic_hook.filters.clone(),
             #[cfg(feature = "capture-spantrace")]
             capture_span_trace_by_default: self.capture_span_trace_by_default,
+            #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
             display_env_section: self.display_env_section,
             #[cfg(feature = "issue-url")]
             issue_url: self.issue_url,
@@ -558,6 +592,7 @@ impl Default for HookBuilder {
     }
 }
 
+#[cfg(feature = "capture-backtrace")]
 fn default_frame_filter(frames: &mut Vec<&Frame>) {
     let top_cutoff = frames
         .iter()
@@ -574,6 +609,7 @@ fn default_frame_filter(frames: &mut Vec<&Frame>) {
     frames.retain(|x| rng.contains(&x.n))
 }
 
+#[cfg(feature = "capture-backtrace")]
 fn eyre_frame_filters(frames: &mut Vec<&Frame>) {
     let filters = &[
         "<color_eyre::Handler as eyre::EyreHandler>::default",
@@ -623,6 +659,7 @@ impl PanicMessage for DefaultPanicMessage {
 pub struct PanicReport<'a> {
     hook: &'a PanicHook,
     panic_info: &'a std::panic::PanicInfo<'a>,
+    #[cfg(feature = "capture-backtrace")]
     backtrace: Option<backtrace::Backtrace>,
     #[cfg(feature = "capture-spantrace")]
     span_trace: Option<tracing_error::SpanTrace>,
@@ -631,7 +668,9 @@ pub struct PanicReport<'a> {
 fn print_panic_info(report: &PanicReport<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     report.hook.panic_message.display(report.panic_info, f)?;
 
+    #[cfg(feature = "capture-backtrace")]
     let v = panic_verbosity();
+    #[cfg(feature = "capture-backtrace")]
     let capture_bt = v != Verbosity::Minimal;
 
     let mut separated = f.header("\n\n");
@@ -639,6 +678,21 @@ fn print_panic_info(report: &PanicReport<'_>, f: &mut fmt::Formatter<'_>) -> fmt
     if let Some(ref section) = report.hook.section {
         write!(&mut separated.ready(), "{}", section)?;
     }
+
+    // TODO: conflicted
+    // #[cfg(feature = "capture-spantrace")]
+    // let span_trace = if hook.spantrace_capture_enabled() {
+    //     Some(tracing_error::SpanTrace::capture())
+    // } else {
+    //     None
+    // };
+
+    // #[cfg(feature = "capture-backtrace")]
+    // let bt = if capture_bt {
+    //     Some(backtrace::Backtrace::new())
+    // } else {
+    //     None
+    // };
 
     #[cfg(feature = "capture-spantrace")]
     {
@@ -651,17 +705,22 @@ fn print_panic_info(report: &PanicReport<'_>, f: &mut fmt::Formatter<'_>) -> fmt
         }
     }
 
-    if let Some(bt) = report.backtrace.as_ref() {
-        let fmted_bt = report.hook.format_backtrace(&bt);
-        write!(
-            indented(&mut separated.ready()).with_format(Format::Uniform { indentation: "  " }),
-            "{}",
-            fmted_bt
-        )?;
+    #[cfg(feature = "capture-backtrace")]
+    {
+        if let Some(bt) = report.backtrace.as_ref() {
+            let fmted_bt = report.hook.format_backtrace(&bt);
+            write!(
+                indented(&mut separated.ready()).with_format(Format::Uniform { indentation: "  " }),
+                "{}",
+                fmted_bt
+            )?;
+        }
     }
 
+    #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
     if report.hook.display_env_section {
         let env_section = EnvSection {
+            #[cfg(feature = "capture-backtrace")]
             bt_captured: &capture_bt,
             #[cfg(feature = "capture-spantrace")]
             span_trace: report.span_trace.as_ref(),
@@ -685,9 +744,11 @@ fn print_panic_info(report: &PanicReport<'_>, f: &mut fmt::Formatter<'_>) -> fmt
                 .unwrap_or("<non string panic payload>");
 
             let issue_section = crate::section::github::IssueSection::new(url, payload)
-                .with_backtrace(report.backtrace.as_ref())
                 .with_location(report.panic_info.location())
                 .with_metadata(&**report.hook.issue_metadata);
+
+            #[cfg(feature = "capture-backtrace")]
+            let issue_section = issue_section.with_backtrace(report.backtrace.as_ref());
 
             #[cfg(feature = "capture-spantrace")]
             let issue_section = issue_section.with_span_trace(report.span_trace.as_ref());
@@ -707,11 +768,13 @@ impl<'a, 'b> fmt::Display for PanicReport<'a> {
 
 /// A panic reporting hook
 pub struct PanicHook {
+    #[cfg(feature = "capture-backtrace")]
     filters: Arc<[Box<FilterCallback>]>,
     section: Option<Box<dyn Display + Send + Sync + 'static>>,
     panic_message: Box<dyn PanicMessage>,
     #[cfg(feature = "capture-spantrace")]
     capture_span_trace_by_default: bool,
+    #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
     display_env_section: bool,
     #[cfg(feature = "issue-url")]
     issue_url: Option<String>,
@@ -722,6 +785,7 @@ pub struct PanicHook {
 }
 
 impl PanicHook {
+    #[cfg(feature = "capture-backtrace")]
     pub(crate) fn format_backtrace<'a>(
         &'a self,
         trace: &'a backtrace::Backtrace,
@@ -759,7 +823,9 @@ impl PanicHook {
         &'a self,
         panic_info: &'a std::panic::PanicInfo<'_>,
     ) -> PanicReport<'a> {
+        #[cfg(feature = "capture-backtrace")]
         let v = panic_verbosity();
+        #[cfg(feature = "capture-backtrace")]
         let capture_bt = v != Verbosity::Minimal;
 
         #[cfg(feature = "capture-spantrace")]
@@ -769,6 +835,7 @@ impl PanicHook {
             None
         };
 
+        #[cfg(feature = "capture-backtrace")]
         let backtrace = if capture_bt {
             Some(backtrace::Backtrace::new())
         } else {
@@ -779,6 +846,7 @@ impl PanicHook {
             panic_info,
             #[cfg(feature = "capture-spantrace")]
             span_trace,
+            #[cfg(feature = "capture-backtrace")]
             backtrace,
             hook: self,
         }
@@ -787,9 +855,11 @@ impl PanicHook {
 
 /// An eyre reporting hook used to construct `EyreHandler`s
 pub struct EyreHook {
+    #[cfg(feature = "capture-backtrace")]
     filters: Arc<[Box<FilterCallback>]>,
     #[cfg(feature = "capture-spantrace")]
     capture_span_trace_by_default: bool,
+    #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
     display_env_section: bool,
     #[cfg(feature = "issue-url")]
     issue_url: Option<String>,
@@ -802,6 +872,7 @@ pub struct EyreHook {
 impl EyreHook {
     #[allow(unused_variables)]
     pub(crate) fn default(&self, error: &(dyn std::error::Error + 'static)) -> crate::Handler {
+        #[cfg(feature = "capture-backtrace")]
         let backtrace = if lib_verbosity() != Verbosity::Minimal {
             Some(backtrace::Backtrace::new())
         } else {
@@ -818,11 +889,14 @@ impl EyreHook {
         };
 
         crate::Handler {
+            #[cfg(feature = "capture-backtrace")]
             filters: self.filters.clone(),
+            #[cfg(feature = "capture-backtrace")]
             backtrace,
             #[cfg(feature = "capture-spantrace")]
             span_trace,
             sections: Vec::new(),
+            #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
             display_env_section: self.display_env_section,
             #[cfg(feature = "issue-url")]
             issue_url: self.issue_url.clone(),
@@ -860,11 +934,13 @@ impl EyreHook {
     }
 }
 
+#[cfg(feature = "capture-backtrace")]
 pub(crate) struct BacktraceFormatter<'a> {
     pub(crate) filters: &'a [Box<FilterCallback>],
     pub(crate) inner: &'a backtrace::Backtrace,
 }
 
+#[cfg(feature = "capture-backtrace")]
 impl fmt::Display for BacktraceFormatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:━^80}", " BACKTRACE ")?;
@@ -944,11 +1020,14 @@ impl fmt::Display for BacktraceFormatter<'_> {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub(crate) enum Verbosity {
+    #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
     Minimal,
     Medium,
+    #[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
     Full,
 }
 
+#[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
 pub(crate) fn panic_verbosity() -> Verbosity {
     match env::var("RUST_BACKTRACE") {
         Ok(s) if s == "full" => Verbosity::Full,
@@ -957,6 +1036,7 @@ pub(crate) fn panic_verbosity() -> Verbosity {
     }
 }
 
+#[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
 pub(crate) fn lib_verbosity() -> Verbosity {
     match env::var("RUST_LIB_BACKTRACE").or_else(|_| env::var("RUST_BACKTRACE")) {
         Ok(s) if s == "full" => Verbosity::Full,
@@ -966,6 +1046,7 @@ pub(crate) fn lib_verbosity() -> Verbosity {
 }
 
 /// Callback for filtering a vector of `Frame`s
+#[cfg(feature = "capture-backtrace")]
 pub type FilterCallback = dyn Fn(&mut Vec<&Frame>) + Send + Sync + 'static;
 
 /// Callback for filtering issue url generation in error reports

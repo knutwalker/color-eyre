@@ -1,4 +1,6 @@
-use crate::config::{lib_verbosity, panic_verbosity, Verbosity};
+use crate::config::Verbosity;
+#[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
+use crate::config::{lib_verbosity, panic_verbosity};
 use fmt::Write;
 use std::fmt::{self, Display};
 #[cfg(feature = "capture-spantrace")]
@@ -172,12 +174,15 @@ impl fmt::Display for FormattedSpanTrace<'_> {
     }
 }
 
+#[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
 pub(crate) struct EnvSection<'a> {
+    #[cfg(feature = "capture-backtrace")]
     pub(crate) bt_captured: &'a bool,
     #[cfg(feature = "capture-spantrace")]
     pub(crate) span_trace: Option<&'a SpanTrace>,
 }
 
+#[cfg(any(feature = "capture-backtrace", feature = "capture-spantrace"))]
 impl fmt::Display for EnvSection<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let v = if std::thread::panicking() {
@@ -185,6 +190,7 @@ impl fmt::Display for EnvSection<'_> {
         } else {
             lib_verbosity()
         };
+        #[cfg(feature = "capture-backtrace")]
         write!(f, "{}", BacktraceOmited(!self.bt_captured))?;
 
         let mut separated = HeaderWriter {

@@ -12,7 +12,8 @@ categories = []
 keywords = []
 
 [features]
-default = ["track-caller", "capture-spantrace"]
+default = ["track-caller", "capture-spantrace", "capture-backtrace"]
+capture-backtrace = ["backtrace"]
 capture-spantrace = ["tracing-error", "color-spantrace"]
 issue-url = ["url"]
 track-caller = []
@@ -20,7 +21,7 @@ track-caller = []
 [dependencies]
 eyre = "0.6.1"
 tracing-error = { version = "0.1.2", optional = true }
-backtrace = { version = "0.3.48", features = ["gimli-symbolize"] }
+backtrace = { version = "0.3.48", features = ["gimli-symbolize"], optional = true }
 indenter = "0.3.0"
 owo-colors = "1.0.3"
 color-spantrace = { version = "0.1.4", optional = true }

@@ -2,6 +2,7 @@ use color_eyre::{eyre::Report, eyre::WrapErr, Section};
 use tracing::{info, instrument};
 
 #[instrument]
+#[cfg(feature = "capture-backtrace")]
 fn main() -> Result<(), Report> {
     std::env::set_var("RUST_BACKTRACE", "1");
     #[cfg(feature = "capture-spantrace")]
@@ -27,6 +28,11 @@ fn main() -> Result<(), Report> {
         .unwrap();
 
     Ok(read_config()?)
+}
+
+#[cfg(not(feature = "capture-backtrace"))]
+fn main() {
+    unimplemented!("this example requires the \"capture-backtrace\" feature")
 }
 
 #[cfg(feature = "capture-spantrace")]
