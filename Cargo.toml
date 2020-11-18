@@ -16,10 +16,10 @@ default = ["track-caller", "capture-spantrace", "capture-backtrace"]
 capture-backtrace = ["backtrace"]
 capture-spantrace = ["tracing-error", "color-spantrace"]
 issue-url = ["url"]
-track-caller = []
+track-caller = ["eyre/track-caller"]
 
 [dependencies]
-eyre = "0.6.1"
+eyre = { version = "0.6.1", default-features = false }
 tracing-error = { version = "0.1.2", optional = true }
 backtrace = { version = "0.3.48", features = ["gimli-symbolize"], optional = true }
 indenter = "0.3.0"
